@@ -34,6 +34,7 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "internal.h"
+#include "libavutil/video_enc_params.h"
 
 #define MV_P_FOR  (1<<0)
 #define MV_B_FOR  (1<<1)
@@ -51,6 +52,8 @@ typedef struct CodecViewContext {
     unsigned mv_type;
     int hsub, vsub;
     int qp;
+    int chroma_qp;
+    int dc_qp;
 } CodecViewContext;
 
 #define OFFSET(x) offsetof(CodecViewContext, x)
@@ -63,6 +66,8 @@ static const AVOption codecview_options[] = {
         CONST("bf", "forward predicted MVs of B-frames",  MV_B_FOR,  "mv"),
         CONST("bb", "backward predicted MVs of B-frames", MV_B_BACK, "mv"),
     { "qp", NULL, OFFSET(qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
+    { "chroma_qp", NULL, OFFSET(chroma_qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
+    { "dc_qp", NULL, OFFSET(dc_qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
     { "mv_type", "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
     { "mvt",     "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
         CONST("fp", "forward predicted MVs",  MV_TYPE_FOR,  "mv_type"),
@@ -212,6 +217,52 @@ static void draw_arrow(uint8_t *buf, int sx, int sy, int ex,
     draw_line(buf, sx, sy, ex, ey, w, h, stride, color);
 }
 
+static int qp_color_calculate(int qp, enum AVVideoEncParamsType type) {
+    return type == AV_VIDEO_ENC_PARAMS_H264 ? qp * 128 / 31 : qp;
+}
+
+static void get_block_color(AVVideoEncParams *par, AVVideoBlockParams *b, CodecViewContext *s, enum AVColorRange color_range, int *cu, int *cv)
+{
+    const int plane_qp_cu_index = s->chroma_qp ? 1 : 0;
+    const int plane_qp_cv_index = s->chroma_qp ? 2 : 0;
+    const int ac_dc_index = s->dc_qp ? 0 : 1;
+    *cu = qp_color_calculate(par->qp + par->delta_qp[plane_qp_cu_index][ac_dc_index] + b->delta_qp, par->type);
+    *cv = qp_color_calculate(par->qp + par->delta_qp[plane_qp_cv_index][ac_dc_index] + b->delta_qp, par->type);
+    if (color_range == AVCOL_RANGE_MPEG) {
+        // map jpeg color range(0-255) to mpeg color range(16-235)
+        *cu = av_rescale(*cu, 73, 85) + 16;
+        *cv = av_rescale(*cv, 73, 85) + 16;
+    }
+}
+
+static void color_block(AVFrame *frame, CodecViewContext *s, const int src_x, const int src_y, const int b_w, const int b_h, const int cu, const int cv)
+{
+    const int w = AV_CEIL_RSHIFT(frame->width,  s->hsub);
+    const int h = AV_CEIL_RSHIFT(frame->height, s->vsub);
+    const int lzu = frame->linesize[1];
+    const int lzv = frame->linesize[2];
+
+    const int plane_src_x = src_x >> s->hsub;
+    const int plane_src_y = src_y >> s->vsub;
+    const int plane_b_w = b_w >> s->hsub;
+    const int plane_b_h = b_h >> s->vsub;
+    uint8_t *pu = frame->data[1] + plane_src_y * lzu;
+    uint8_t *pv = frame->data[2] + plane_src_y * lzv;
+
+    for (int y = plane_src_y; y < plane_src_y + plane_b_h; y++) {
+        for (int x = plane_src_x; x < plane_src_x + plane_b_w; x++) {
+            if (x >= w)
+                break;
+            pu[x] = cu;
+            pv[x] = cv;
+        }
+        if (y >= h)
+            break;
+        pu += lzu;
+        pv += lzv;
+    }
+}
+
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
     AVFilterContext *ctx = inlink->dst;
@@ -240,8 +291,24 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
                 pv += lzv;
             }
         }
-    }
 
+        AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_VIDEO_ENC_PARAMS);
+        if (sd) {
+            AVVideoEncParams *par = (AVVideoEncParams*)sd->data;
+
+            if (par->nb_blocks) {
+                for (int i = 0; i < par->nb_blocks; i++) {
+                    AVVideoBlockParams *b = av_video_enc_params_block(par, i);
+                    int cu, cv;
+                    get_block_color(par, b, s, frame->color_range, &cu, &cv);
+                    color_block(frame, s, b->src_x, b->src_y, b->w, b->h, cu, cv);
+                }
+            } else {
+                const c = qp_color_calculate(par->qp, par->type);
+                color_block(frame, s, 0, 0, frame->width, frame->height, c, c);
+            }
+        }
+    }
     if (s->mv || s->mv_type) {
         AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_MOTION_VECTORS);
         if (sd) {

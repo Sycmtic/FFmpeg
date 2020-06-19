@@ -3429,7 +3429,7 @@ static int mov_write_string_data_tag(AVIOContext *pb, const char *data, int lang
         return size;
     } else {
         if (!lang)
-            lang = ff_mov_iso639_to_lang("und", 1);
+            lang = ff_mov_iso639_to_lang("und", 1, FF_COMPLIANCE_NORMAL);
         avio_wb16(pb, strlen(data)); /* string length */
         avio_wb16(pb, lang);
         avio_write(pb, data, strlen(data));
@@ -3468,7 +3468,7 @@ static AVDictionaryEntry *get_metadata_lang(AVFormatContext *s,
     while ((t2 = av_dict_get(s->metadata, tag2, t2, AV_DICT_IGNORE_SUFFIX))) {
         len2 = strlen(t2->key);
         if (len2 == len + 4 && !strcmp(t->value, t2->value)
-            && (l = ff_mov_iso639_to_lang(&t2->key[len2 - 3], 1)) >= 0) {
+            && (l = ff_mov_iso639_to_lang(&t2->key[len2 - 3], 1, s->strict_std_compliance)) >= 0) {
             *lang = l;
             return t;
         }
@@ -6445,7 +6445,7 @@ static int mov_init(AVFormatContext *s)
 
         track->st  = st;
         track->par = st->codecpar;
-        track->language = ff_mov_iso639_to_lang(lang?lang->value:"und", mov->mode!=MODE_MOV);
+        track->language = ff_mov_iso639_to_lang(lang?lang->value:"und", mov->mode!=MODE_MOV, s->strict_std_compliance);
         if (track->language < 0)
             track->language = 32767;  // Unspecified Macintosh language code
         track->mode = mov->mode;

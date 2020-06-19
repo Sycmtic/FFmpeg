@@ -416,7 +416,7 @@ static const char mov_mdhd_language_map[][4] = {
     "cat", "lat", "que", "grn", "aym", "tat", "uig", "dzo", "jav"
 };
 
-int ff_mov_iso639_to_lang(const char lang[4], int mp4)
+int ff_mov_iso639_to_lang(const char lang[4], int mp4, int strict_std_compliance)
 {
     int i, code = 0;
 
@@ -426,8 +426,13 @@ int ff_mov_iso639_to_lang(const char lang[4], int mp4)
             return i;
     }
     /* XXX:can we do that in mov too? */
-    if (!mp4)
+    if (!mp4 && (strict_std_compliance != FF_COMPLIANCE_EXPERIMENTAL || !strcmp(lang, "und"))) {
+        if (strcmp(lang, "und"))
+            av_log(NULL, AV_LOG_WARNING, "Non macintosh language is discarded for mov\n");
         return -1;
+    }
+    if (!mp4)
+        av_log(NULL, AV_LOG_WARNING, "Experimental behavior: enable iso 639 language in mov\n");
     /* handle undefined as such */
     if (lang[0] == '\0')
         lang = "und";

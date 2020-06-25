@@ -7285,6 +7285,9 @@ backward predicted MVs of B-frames
 @item qp
 Display quantization parameters using the chroma planes.
 
+@item mb_type
+Display macro block type using the chroma planes.
+
 @item mv_type, mvt
 Set motion vectors type to visualize. Includes MVs from all frames unless specified by @var{frame_type} option.
 

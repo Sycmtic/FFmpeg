@@ -816,6 +816,12 @@ static int h264_export_enc_params(AVFrame *f, H264Picture *p)
             b->h     = 16;
 
             b->delta_qp = p->qscale_table[mb_xy] - par->qp;
+
+            uint32_t mb_type = p->mb_type[mb_xy];
+            b->mb_type.intra = IS_PCM(mb_type);
+            b->mb_type.skip = IS_SKIP(mb_type);
+            b->mb_type.ref[0] = !USES_LIST(mb_type, 1);
+            b->mb_type.ref[1] = !USES_LIST(mb_type, 0);
         }
 
     return 0;

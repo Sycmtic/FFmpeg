@@ -34,6 +34,7 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "internal.h"
+#include "libavutil/video_enc_params.h"
 
 #define MV_P_FOR  (1<<0)
 #define MV_B_FOR  (1<<1)
@@ -51,6 +52,7 @@ typedef struct CodecViewContext {
     unsigned mv_type;
     int hsub, vsub;
     int qp;
+    int mb_type;
 } CodecViewContext;
 
 #define OFFSET(x) offsetof(CodecViewContext, x)
@@ -63,6 +65,7 @@ static const AVOption codecview_options[] = {
         CONST("bf", "forward predicted MVs of B-frames",  MV_B_FOR,  "mv"),
         CONST("bb", "backward predicted MVs of B-frames", MV_B_BACK, "mv"),
     { "qp", NULL, OFFSET(qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
+    { "mb_type", "set block type to visualize", OFFSET(mb_type), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
     { "mv_type", "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
     { "mvt",     "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
         CONST("fp", "forward predicted MVs",  MV_TYPE_FOR,  "mv_type"),
@@ -212,6 +215,34 @@ static void draw_arrow(uint8_t *buf, int sx, int sy, int ex,
     draw_line(buf, sx, sy, ex, ey, w, h, stride, color);
 }
 
+static void color_block(AVFrame *frame, CodecViewContext *s, const int src_x, const int src_y, const int b_w, const int b_h, const int cu, const int cv)
+{
+    const int w = AV_CEIL_RSHIFT(frame->width,  s->hsub);
+    const int h = AV_CEIL_RSHIFT(frame->height, s->vsub);
+    const int lzu = frame->linesize[1];
+    const int lzv = frame->linesize[2];
+
+    const int plane_src_x = src_x >> s->hsub;
+    const int plane_src_y = src_y >> s->vsub;
+    const int plane_b_w = b_w >> s->hsub;
+    const int plane_b_h = b_h >> s->vsub;
+    uint8_t *pu = frame->data[1] + plane_src_y * lzu;
+    uint8_t *pv = frame->data[2] + plane_src_y * lzv;
+
+    for (int y = plane_src_y; y < plane_src_y + plane_b_h; y++) {
+        for (int x = plane_src_x; x < plane_src_x + plane_b_w; x++) {
+            if (x >= w)
+                break;
+            pu[x] = cu;
+            pv[x] = cv;
+        }
+        if (y >= h)
+            break;
+        pu += lzu;
+        pv += lzv;
+    }
+}
+
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
     AVFilterContext *ctx = inlink->dst;
@@ -238,6 +269,37 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
                 }
                 pu += lzu;
                 pv += lzv;
+            }
+        }
+    }
+
+    if (s->mb_type) {
+        AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_VIDEO_ENC_PARAMS);
+        if (sd) {
+            AVVideoEncParams *par = (AVVideoEncParams *) sd->data;
+            for (int i = 0; i < par->nb_blocks; i++) {
+                AVVideoBlockParams *b = av_video_enc_params_block(par, i);
+                MacroBlockType mb_type = b->mb_type;
+                uint64_t u = 128, v = 128;
+#define COLOR(theta, r) \
+    u = (int)(128 + r * cos(theta * M_PI / 180)); \
+    v = (int)(128 + r * sin(theta * M_PI / 180));
+
+                if (mb_type.intra) {
+                    COLOR(120, 48)
+                } else if (mb_type.skip) {
+                    // COLOR(180, 48)
+                } else if (mb_type.ref[0]) {
+                    COLOR(240, 48)
+                } else if (mb_type.ref[1]) {
+                    COLOR(0, 48)
+                } else {
+                    av_assert2(!mb_type.ref[1] && !mb_type.ref[0]);
+                    COLOR(300,48)
+                }
+                u *= 0x0101010101010101ULL;
+                v *= 0x0101010101010101ULL;
+                color_block(frame, s, b->src_x, b->src_y, b->w, b->h, u, v);
             }
         }
     }

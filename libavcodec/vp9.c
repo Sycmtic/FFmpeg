@@ -1535,6 +1535,10 @@ static int vp9_export_enc_params(VP9Context *s, VP9Frame *frame)
                 b->src_y = row * 8;
                 b->w     = 1 << (3 + td->block_structure[block_tile].block_size_idx_x);
                 b->h     = 1 << (3 + td->block_structure[block_tile].block_size_idx_y);
+                b->mb_type.intra = td->block_structure[block_tile].intra;
+                b->mb_type.skip = td->block_structure[block_tile].skip;
+                b->mb_type.ref[0] = td->block_structure[block_tile].ref1;
+                b->mb_type.ref[1] = td->block_structure[block_tile].ref2;
 
                 if (s->s.h.segmentation.feat[seg_id].q_enabled) {
                     b->delta_qp = s->s.h.segmentation.feat[seg_id].q_val;

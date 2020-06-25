@@ -101,6 +101,21 @@ typedef struct AVVideoEncParams {
     int32_t delta_qp[4][2];
 } AVVideoEncParams;
 
+typedef struct MacroBlockType {
+    /**
+     * Is intra prediction
+     */
+    int intra;
+    /**
+     * Skip flag
+     */
+    int skip;
+    /**
+     * Reference to the past or future
+     */
+     int ref[2];
+} MacroBlockType;
+
 /**
  * Data structure for storing block-level encoding information.
  * It is allocated as a part of AVVideoEncParams and should be retrieved with
@@ -126,6 +141,11 @@ typedef struct AVVideoBlockParams {
      * corresponding per-frame value.
      */
     int32_t delta_qp;
+
+    /**
+     * Type of block
+     */
+    MacroBlockType mb_type;
 } AVVideoBlockParams;
 
 /*

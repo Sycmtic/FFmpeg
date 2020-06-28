@@ -34,6 +34,7 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "internal.h"
+#include "libavutil/video_enc_params.h"
 
 #define MV_P_FOR  (1<<0)
 #define MV_B_FOR  (1<<1)
@@ -51,6 +52,7 @@ typedef struct CodecViewContext {
     unsigned mv_type;
     int hsub, vsub;
     int qp;
+    int bs;
 } CodecViewContext;
 
 #define OFFSET(x) offsetof(CodecViewContext, x)
@@ -63,6 +65,7 @@ static const AVOption codecview_options[] = {
         CONST("bf", "forward predicted MVs of B-frames",  MV_B_FOR,  "mv"),
         CONST("bb", "backward predicted MVs of B-frames", MV_B_BACK, "mv"),
     { "qp", NULL, OFFSET(qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
+    { "bs", "set block structure to visualize", OFFSET(bs), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
     { "mv_type", "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
     { "mvt",     "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
         CONST("fp", "forward predicted MVs",  MV_TYPE_FOR,  "mv_type"),
@@ -212,6 +215,30 @@ static void draw_arrow(uint8_t *buf, int sx, int sy, int ex,
     draw_line(buf, sx, sy, ex, ey, w, h, stride, color);
 }
 
+static void draw_block_border(AVFrame *frame, AVVideoBlockParams *b)
+{
+    const int lzy = frame->linesize[0];
+    uint8_t *py = frame->data[0] + b->src_y * lzy;
+
+    for (int x = b->src_x; x < b->src_x + b->w; x++) {
+        if (x >= frame->width)
+            break;
+        py[x] = py[x] * 3 / 4;
+    }
+    for (int y = b->src_y; y < b->src_y + b->h; y++) {
+        if (y >= frame->height)
+            break;
+        py[b->src_x] = py[b->src_x] * 3 / 4;
+        py[b->src_x + b->w - 1] = py[b->src_x + b->w - 1] * 3 / 4;
+        py += lzy;
+    }
+    for (int x = b->src_x; x < b->src_x + b->w; x++) {
+        if (x >= frame->width)
+            break;
+        py[x] = py[x] * 3 / 4;
+    }
+}
+
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
     AVFilterContext *ctx = inlink->dst;
@@ -238,6 +265,20 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
                 }
                 pu += lzu;
                 pv += lzv;
+            }
+        }
+    }
+
+    if (s->bs) {
+        AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_VIDEO_ENC_PARAMS);
+        if (sd) {
+            AVVideoEncParams *par = (AVVideoEncParams*)sd->data;
+
+            if (par->nb_blocks) {
+                for (int i = 0; i < par->nb_blocks; i++) {
+                    AVVideoBlockParams *b = av_video_enc_params_block(par, i);
+                    draw_block_border(frame, b);
+                }
             }
         }
     }

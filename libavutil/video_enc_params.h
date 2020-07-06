@@ -57,6 +57,11 @@ enum AVVideoEncParamsType {
     AV_VIDEO_ENC_PARAMS_H264,
 };
 
+enum AVVideoBlockFlags {
+    AV_VIDEO_ENC_BLOCK_INTRA = 1ULL <<  0,  /* Indicates block uses intra prediction */
+    AV_VIDEO_ENC_BLOCK_SKIP = 1ULL <<  1,   /* Indicates block is not coded (skipped) */
+};
+
 /**
  * Video encoding parameters for a given frame. This struct is allocated along
  * with an optional array of per-block AVVideoBlockParams descriptors.
@@ -126,6 +131,20 @@ typedef struct AVVideoBlockParams {
      * corresponding per-frame value.
      */
     int32_t delta_qp;
+
+    /**
+     * Type flag of the block
+     * Each bit field indicates a type flag
+     */
+    enum AVVideoBlockFlags flags;
+
+    /**
+     * Reference frames used for prediction
+     * Each entry specifies the first/second/third/etc. reference frame the current frame uses.
+     * The value at each entry specifies the index inside the reference frame array for that current frame.
+     * Any entry that is unused will be set to -1
+     */
+    int8_t ref[8];
 } AVVideoBlockParams;
 
 /*

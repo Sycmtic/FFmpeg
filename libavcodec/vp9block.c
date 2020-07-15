@@ -1295,6 +1295,12 @@ void ff_vp9_decode_block(VP9TileData *td, int row, int col,
             td->block_structure[td->nb_block_structure].col = col;
             td->block_structure[td->nb_block_structure].block_size_idx_x = av_log2(w4);
             td->block_structure[td->nb_block_structure].block_size_idx_y = av_log2(h4);
+
+            td->block_structure[td->nb_block_structure].intra = b->intra;
+            td->block_structure[td->nb_block_structure].skip = b->skip;
+            td->block_structure[td->nb_block_structure].comp = b->comp;
+            td->block_structure[td->nb_block_structure].ref[0] = b->ref[0];
+            td->block_structure[td->nb_block_structure].ref[1] = b->ref[1];
             td->nb_block_structure++;
         }
 

@@ -1541,6 +1541,16 @@ static int vp9_export_enc_params(VP9Context *s, VP9Frame *frame)
                     if (s->s.h.segmentation.absolute_vals)
                         b->delta_qp -= par->qp;
                 }
+
+                if (td->block_structure[block_tile].skip)
+                    b->flags |= AV_VIDEO_ENC_BLOCK_SKIP;
+                if (td->block_structure[block_tile].intra) {
+                    b->flags |= AV_VIDEO_ENC_BLOCK_INTRA;
+                } else {
+                    b->ref[0] = td->block_structure[block_tile].ref[0];
+                    if (td->block_structure[block_tile].comp)
+                        b->ref[1] = td->block_structure[block_tile].ref[1];
+                }
             }
         }
     }

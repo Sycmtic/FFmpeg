@@ -54,6 +54,7 @@ typedef struct CodecViewContext {
     int qp;
     int chroma_qp;
     int dc_qp;
+    int bs;
 } CodecViewContext;
 
 #define OFFSET(x) offsetof(CodecViewContext, x)
@@ -68,6 +69,7 @@ static const AVOption codecview_options[] = {
     { "qp", NULL, OFFSET(qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
     { "chroma_qp", NULL, OFFSET(chroma_qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
     { "dc_qp", NULL, OFFSET(dc_qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
+    { "bs", "set block structure to visualize", OFFSET(bs), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
     { "mv_type", "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
     { "mvt",     "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
         CONST("fp", "forward predicted MVs",  MV_TYPE_FOR,  "mv_type"),
@@ -235,9 +237,8 @@ static void get_block_color(AVVideoEncParams *par, AVVideoBlockParams *b, CodecV
     }
 }
 
-static void color_block(AVFrame *frame, CodecViewContext *s, const int src_x, const int src_y, const int b_w, const int b_h, const int cu, const int cv)
-{
-    const int w = AV_CEIL_RSHIFT(frame->width,  s->hsub);
+static void color_block(AVFrame *frame, CodecViewContext *s, const int src_x, const int src_y, const int b_w, const int b_h, const int cu, const int cv) {
+    const int w = AV_CEIL_RSHIFT(frame->width, s->hsub);
     const int h = AV_CEIL_RSHIFT(frame->height, s->vsub);
     const int lzu = frame->linesize[1];
     const int lzv = frame->linesize[2];
@@ -263,11 +264,37 @@ static void color_block(AVFrame *frame, CodecViewContext *s, const int src_x, co
     }
 }
 
+static void draw_block_border(AVFrame *frame, AVVideoBlockParams *b)
+{
+    const int lzy = frame->linesize[0];
+    uint8_t *py = frame->data[0] + b->src_y * lzy;
+
+    for (int x = b->src_x; x < b->src_x + b->w; x++) {
+        if (x >= frame->width)
+            break;
+        py[x] = py[x] * 3 / 4;
+    }
+    for (int y = b->src_y; y < b->src_y + b->h; y++) {
+        if (y >= frame->height)
+            break;
+        py[b->src_x] = py[b->src_x] * 3 / 4;
+        py[b->src_x + b->w - 1] = py[b->src_x + b->w - 1] * 3 / 4;
+        py += lzy;
+    }
+    for (int x = b->src_x; x < b->src_x + b->w; x++) {
+        if (x >= frame->width)
+            break;
+        py[x] = py[x] * 3 / 4;
+    }
+}
+
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
     AVFilterContext *ctx = inlink->dst;
     CodecViewContext *s = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
+
+    AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_VIDEO_ENC_PARAMS);
 
     if (s->qp) {
         int qstride, qp_type;
@@ -275,7 +302,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
         if (qp_table) {
             int x, y;
-            const int w = AV_CEIL_RSHIFT(frame->width,  s->hsub);
+            const int w = AV_CEIL_RSHIFT(frame->width, s->hsub);
             const int h = AV_CEIL_RSHIFT(frame->height, s->vsub);
             uint8_t *pu = frame->data[1];
             uint8_t *pv = frame->data[2];
@@ -284,7 +311,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
             for (y = 0; y < h; y++) {
                 for (x = 0; x < w; x++) {
-                    const int qp = ff_norm_qscale(qp_table[(y >> 3) * qstride + (x >> 3)], qp_type) * 128/31;
+                    const int qp = ff_norm_qscale(qp_table[(y >> 3) * qstride + (x >> 3)], qp_type) * 128 / 31;
                     pu[x] = pv[x] = qp;
                 }
                 pu += lzu;
@@ -292,7 +319,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             }
         }
 
-        AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_VIDEO_ENC_PARAMS);
         if (sd) {
             AVVideoEncParams *par = (AVVideoEncParams*)sd->data;
 
@@ -309,6 +335,20 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             }
         }
     }
+
+    if (s->bs) {
+        if (sd) {
+            AVVideoEncParams *par = (AVVideoEncParams*)sd->data;
+
+            if (par->nb_blocks) {
+                for (int i = 0; i < par->nb_blocks; i++) {
+                    AVVideoBlockParams *b = av_video_enc_params_block(par, i);
+                    draw_block_border(frame, b);
+                }
+            }
+        }
+    }
+
     if (s->mv || s->mv_type) {
         AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_MOTION_VECTORS);
         if (sd) {

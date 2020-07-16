@@ -7291,6 +7291,9 @@ Display chroma quantization parameters (default luma qp) using the chroma planes
 @item dc_qp
 Display DC quantization parameters (default AC qp) using the chroma planes. Should use with qp option. (e.g. codecview=qp=true:dc_qp=true)
 
+@item bs
+Display block structure using the luma plane.
+
 @item mv_type, mvt
 Set motion vectors type to visualize. Includes MVs from all frames unless specified by @var{frame_type} option.
 

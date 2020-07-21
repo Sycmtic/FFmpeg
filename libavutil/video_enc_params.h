@@ -126,6 +126,15 @@ typedef struct AVVideoBlockParams {
      * corresponding per-frame value.
      */
     int32_t delta_qp;
+
+    /**
+     * Indicates the block uses intra prediction
+     */
+    unsigned int intra:1;
+    /**
+     * Indicates the block is not coded
+     */
+    unsigned int skip:1;
 } AVVideoBlockParams;
 
 /*

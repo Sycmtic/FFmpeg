@@ -55,6 +55,7 @@ typedef struct CodecViewContext {
     int chroma_qp;
     int dc_qp;
     int bs;
+    int mb_type;
 } CodecViewContext;
 
 #define OFFSET(x) offsetof(CodecViewContext, x)
@@ -70,6 +71,7 @@ static const AVOption codecview_options[] = {
     { "chroma_qp", NULL, OFFSET(chroma_qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
     { "dc_qp", NULL, OFFSET(dc_qp), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
     { "bs", "set block structure to visualize", OFFSET(bs), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
+    { "mb_type", "set block type to visualize", OFFSET(mb_type), AV_OPT_TYPE_BOOL, {.i64=0}, 0, 1, .flags = FLAGS },
     { "mv_type", "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
     { "mvt",     "set motion vectors type", OFFSET(mv_type), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, INT_MAX, FLAGS, "mv_type" },
         CONST("fp", "forward predicted MVs",  MV_TYPE_FOR,  "mv_type"),
@@ -345,6 +347,29 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
                     AVVideoBlockParams *b = av_video_enc_params_block(par, i);
                     draw_block_border(frame, b);
                 }
+            }
+        }
+    }
+
+    if (s->mb_type) {
+        AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_VIDEO_ENC_PARAMS);
+        if (sd) {
+            AVVideoEncParams *par = (AVVideoEncParams *) sd->data;
+            for (int i = 0; i < par->nb_blocks; i++) {
+                AVVideoBlockParams *b = av_video_enc_params_block(par, i);
+                uint64_t u = 128, v = 128;
+#define COLOR(theta, r) \
+    u = (int)(128 + r * cos(theta * M_PI / 180)); \
+    v = (int)(128 + r * sin(theta * M_PI / 180));
+
+                if (b->intra) {
+                    COLOR(120, 48)
+                } else if (b->skip) {
+                    // COLOR(180, 48)
+                }
+                u *= 0x0101010101010101ULL;
+                v *= 0x0101010101010101ULL;
+                color_block(frame, s, b->src_x, b->src_y, b->w, b->h, u, v);
             }
         }
     }

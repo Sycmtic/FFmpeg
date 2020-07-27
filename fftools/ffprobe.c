@@ -47,6 +47,7 @@
 #include "libavutil/parseutils.h"
 #include "libavutil/timecode.h"
 #include "libavutil/timestamp.h"
+#include "libavutil/video_enc_params.h"
 #include "libavdevice/avdevice.h"
 #include "libswscale/swscale.h"
 #include "libswresample/swresample.h"
@@ -166,6 +167,8 @@ typedef enum {
     SECTION_ID_FRAME_TAGS,
     SECTION_ID_FRAME_SIDE_DATA_LIST,
     SECTION_ID_FRAME_SIDE_DATA,
+    SECTION_ID_FRAME_BLOCK_DATA_LIST,
+    SECTION_ID_FRAME_BLOCK_DATA,
     SECTION_ID_FRAME_SIDE_DATA_TIMECODE_LIST,
     SECTION_ID_FRAME_SIDE_DATA_TIMECODE,
     SECTION_ID_FRAME_LOG,
@@ -213,6 +216,8 @@ static struct section sections[] = {
     [SECTION_ID_FRAME_TAGS] =         { SECTION_ID_FRAME_TAGS, "tags", SECTION_FLAG_HAS_VARIABLE_FIELDS, { -1 }, .element_name = "tag", .unique_name = "frame_tags" },
     [SECTION_ID_FRAME_SIDE_DATA_LIST] ={ SECTION_ID_FRAME_SIDE_DATA_LIST, "side_data_list", SECTION_FLAG_IS_ARRAY, { SECTION_ID_FRAME_SIDE_DATA, -1 }, .element_name = "side_data", .unique_name = "frame_side_data_list" },
     [SECTION_ID_FRAME_SIDE_DATA] =     { SECTION_ID_FRAME_SIDE_DATA, "side_data", 0, { SECTION_ID_FRAME_SIDE_DATA_TIMECODE_LIST, -1 } },
+    [SECTION_ID_FRAME_BLOCK_DATA_LIST] ={ SECTION_ID_FRAME_BLOCK_DATA_LIST, "block_data_list", SECTION_FLAG_IS_ARRAY, { SECTION_ID_FRAME_BLOCK_DATA, -1 }, .element_name = "block_data", .unique_name = "frame_block_data_list"},
+    [SECTION_ID_FRAME_BLOCK_DATA] =     { SECTION_ID_FRAME_BLOCK_DATA, "block_data", 0, { -1 }, .show_all_entries = 1 },
     [SECTION_ID_FRAME_SIDE_DATA_TIMECODE_LIST] =     { SECTION_ID_FRAME_SIDE_DATA_TIMECODE_LIST, "timecodes", SECTION_FLAG_IS_ARRAY, { SECTION_ID_FRAME_SIDE_DATA_TIMECODE, -1 } },
     [SECTION_ID_FRAME_SIDE_DATA_TIMECODE] =     { SECTION_ID_FRAME_SIDE_DATA_TIMECODE, "timecode", 0, { -1 } },
     [SECTION_ID_FRAME_LOGS] =         { SECTION_ID_FRAME_LOGS, "logs", SECTION_FLAG_IS_ARRAY, { SECTION_ID_FRAME_LOG, -1 } },
@@ -2259,6 +2264,22 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
                 if (tag)
                     print_str(tag->key, tag->value);
                 print_int("size", sd->size);
+            } else if (sd->type == AV_FRAME_DATA_VIDEO_ENC_PARAMS) {
+                AVVideoEncParams *par = (AVVideoEncParams *) sd->data;
+                if (par->nb_blocks) {
+                    writer_print_section_header(w, SECTION_ID_FRAME_BLOCK_DATA_LIST);
+                    for (int i = 0; i < par->nb_blocks; i++) {
+                        AVVideoBlockParams *b = av_video_enc_params_block(par, i);
+                        writer_print_section_header(w, SECTION_ID_FRAME_BLOCK_DATA);
+                        print_int("src_x", b->src_x);
+                        print_int("src_y", b->src_y);
+                        print_int("width", b->w);
+                        print_int("height", b->h);
+                        print_int("delta_qp", b->delta_qp);
+                        writer_print_section_footer(w);
+                    }
+                    writer_print_section_footer(w);
+                }
             }
             writer_print_section_footer(w);
         }

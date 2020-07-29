@@ -2276,6 +2276,8 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
                         print_int("width", b->w);
                         print_int("height", b->h);
                         print_int("delta_qp", b->delta_qp);
+                        print_int("intra", b->intra);
+                        print_int("skip", b->skip);
                         writer_print_section_footer(w);
                     }
                     writer_print_section_footer(w);

@@ -1501,10 +1501,8 @@ static int vp9_export_enc_params(VP9Context *s, VP9Frame *frame)
     AVVideoEncParams *par;
     unsigned int tile, nb_blocks = 0;
 
-    if (s->s.h.segmentation.enabled) {
-        for (tile = 0; tile < s->active_tile_cols; tile++)
-            nb_blocks += s->td[tile].nb_block_structure;
-    }
+    for (tile = 0; tile < s->active_tile_cols; tile++)
+        nb_blocks += s->td[tile].nb_block_structure;
 
     par = av_video_enc_params_create_side_data(frame->tf.f,
         AV_VIDEO_ENC_PARAMS_VP9, nb_blocks);
@@ -1538,7 +1536,7 @@ static int vp9_export_enc_params(VP9Context *s, VP9Frame *frame)
                 b->intra = td->block_structure[block_tile].intra;
                 b->skip = td->block_structure[block_tile].skip;
 
-                if (s->s.h.segmentation.feat[seg_id].q_enabled) {
+                if (s->s.h.segmentation.enabled && s->s.h.segmentation.feat[seg_id].q_enabled) {
                     b->delta_qp = s->s.h.segmentation.feat[seg_id].q_val;
                     if (s->s.h.segmentation.absolute_vals)
                         b->delta_qp -= par->qp;

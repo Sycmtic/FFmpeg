@@ -231,6 +231,7 @@ struct VP9TileData {
         unsigned int col:13;
         unsigned int block_size_idx_x:2;
         unsigned int block_size_idx_y:2;
+        VP56mv mv[4][2];
     } *block_structure;
     unsigned int nb_block_structure;
 };

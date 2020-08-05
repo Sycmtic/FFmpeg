@@ -35,6 +35,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/video_enc_params.h"
+#include "libavutil/motion_vector.h"
 
 #define VP9_SYNCCODE 0x498342
 
@@ -1496,6 +1497,25 @@ int loopfilter_proc(AVCodecContext *avctx)
 }
 #endif
 
+static int add_mb(AVMotionVector *mb, int w, int h,
+                  int dst_x, int dst_y,
+                  int motion_x, int motion_y, int motion_scale,
+                  int direction)
+{
+    mb->w = w;
+    mb->h = h;
+    mb->motion_x = motion_x;
+    mb->motion_y = motion_y;
+    mb->motion_scale = motion_scale;
+    mb->dst_x = dst_x;
+    mb->dst_y = dst_y;
+    mb->src_x = dst_x + motion_x / motion_scale;
+    mb->src_y = dst_y + motion_y / motion_scale;
+    mb->source = direction ? 1 : -1;
+    mb->flags = 0; // XXX: does mb_type contain extra information that could be exported here?
+    return 1;
+}
+
 static int vp9_export_enc_params(VP9Context *s, VP9Frame *frame)
 {
     AVVideoEncParams *par;
@@ -1776,6 +1796,54 @@ finish:
         if ((ret = av_frame_ref(frame, s->s.frames[CUR_FRAME].tf.f)) < 0)
             return ret;
         *got_frame = 1;
+    }
+
+    if (avctx->export_side_data & AV_CODEC_EXPORT_DATA_MVS) {
+        AVMotionVector *mvs = av_malloc_array(((AVFrame*) frame)->width * ((AVFrame*) frame)->height, 2 * 4 * sizeof(AVMotionVector));
+        if (!mvs)
+            return AVERROR(ENOMEM);
+
+        unsigned int tile, nb_blocks = 0;
+        for (tile = 0; tile < s->active_tile_cols; tile++) {
+            nb_blocks += s->td[tile].nb_block_structure;
+        }
+
+        if (nb_blocks) {
+            unsigned int block = 0;
+            unsigned int tile, block_tile;
+
+            for (tile = 0; tile < s->active_tile_cols; tile++) {
+                VP9TileData *td = &s->td[tile];
+
+                for (block_tile = 0; block_tile < td->nb_block_structure; block_tile++) {
+                    unsigned int      row = td->block_structure[block_tile].row;
+                    unsigned int      col = td->block_structure[block_tile].col;
+                    int w = 1 << (3 + td->block_structure[block_tile].block_size_idx_x);
+                    int h = 1 << (3 + td->block_structure[block_tile].block_size_idx_y);
+                    int src_x = col * 8;
+                    int src_y = row * 8;
+                    int motion_x = td->block_structure[block_tile].mv[0][0].x;
+                    int motion_y = td->block_structure[block_tile].mv[0][0].y;
+                    add_mb(mvs + block, w, h, src_x + w / 2, src_y + h / 2, motion_x, motion_y, 16, 0);
+                    block++;
+                }
+            }
+
+            if (block) {
+                AVFrameSideData *sd;
+
+                av_log(avctx, AV_LOG_DEBUG, "Adding %d MVs info to frame %d\n", block, avctx->frame_number);
+                // TODO: Add multiple motion vector side data support
+                sd = av_frame_new_side_data(frame, AV_FRAME_DATA_MOTION_VECTORS, block * sizeof(AVMotionVector));
+                if (!sd) {
+                    av_freep(&mvs);
+                    return -1;
+                }
+                memcpy(sd->data, mvs, block * sizeof(AVMotionVector));
+            }
+
+            av_freep(&mvs);
+        }
     }
 
     return pkt->size;

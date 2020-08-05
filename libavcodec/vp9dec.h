@@ -232,6 +232,9 @@ struct VP9TileData {
         unsigned int block_size_idx_x:2;
         unsigned int block_size_idx_y:2;
     } *block_structure;
+    struct {
+        VP56mv mv[4][2];
+    } *block_motion_vectors;
     unsigned int nb_block_structure;
 };
 

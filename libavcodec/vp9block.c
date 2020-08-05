@@ -1297,6 +1297,8 @@ void ff_vp9_decode_block(VP9TileData *td, int row, int col,
             td->block_structure[td->nb_block_structure].block_size_idx_y = av_log2(h4);
             td->nb_block_structure++;
         }
+        if (td->block_motion_vectors)
+            memcpy(&td->block_motion_vectors[td->nb_block_structure].mv, &b->mv, sizeof(b->mv));
 
         if (!b->skip) {
             int has_coeffs;

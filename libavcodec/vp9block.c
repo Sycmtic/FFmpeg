@@ -1297,6 +1297,8 @@ void ff_vp9_decode_block(VP9TileData *td, int row, int col,
             td->block_structure[td->nb_block_structure].block_size_idx_y = av_log2(h4);
             td->block_structure[td->nb_block_structure].intra = b->intra;
             td->block_structure[td->nb_block_structure].skip = b->skip;
+            for (int i = 0; i < 4; i++)
+                memcpy(&td->block_structure[td->nb_block_structure].mv[i], &b->mv[i], sizeof(b->mv[i]));
             td->nb_block_structure++;
         }
 
